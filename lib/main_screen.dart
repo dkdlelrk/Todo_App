@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
 import 'package:todo/add_task.dart';
-import 'package:todo/data.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -12,13 +11,35 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   List<String> todoList = [];
-  int textIndex = 0;
-  void updateText(String val) {
+  late SharedPreferences prefs;
+  int delIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    loadData(); // 앱 시작 시 데이터 로드
+  }
+
+  // SharedPreferences에 저장된 데이터 불러오기
+  void loadData() async {
+    prefs = await SharedPreferences.getInstance();
     setState(() {
-      todoList.insert(0, val);
+      todoList = prefs.getStringList('data') ?? [];
     });
   }
 
+  // 할 일 목록 추가 및 저장
+  void updateText(String val) async {
+    if (todoList.contains(val)) {
+      return;
+    }
+    setState(() {
+      todoList.insert(0, val);
+    });
+    prefs.setStringList('data', todoList); // 데이터 저장
+  }
+
+  // 할 일 목록 삭제 및 저장
   void ShowDialog(int index) {
     showDialog(
       context: context,
@@ -37,18 +58,22 @@ class _MainScreenState extends State<MainScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     TextButton(
-                        onPressed: () {
-                          setState(() {
-                            todoList.removeAt(textIndex);
-                            Navigator.of(context).pop();
-                          });
-                        },
-                        child: const Text('Yes')),
-                    TextButton(
-                        onPressed: () {
+                      onPressed: () async {
+                        setState(() {
+                          todoList.removeAt(index);
+                          delIndex = index; // 인자로 받은 index로 삭제
                           Navigator.of(context).pop();
-                        },
-                        child: const Text('No')),
+                        });
+                        prefs.setStringList('data', todoList); // 삭제 후 데이터 저장
+                      },
+                      child: const Text('Yes'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('No'),
+                    ),
                   ],
                 ),
               ],
@@ -76,10 +101,10 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (context) {
                   return Padding(
                     padding: MediaQuery.of(context).viewInsets,
-                    child: Container(
+                    child: SizedBox(
                       height: MediaQuery.of(context).size.height / 4,
                       child: AddTask(
-                        updateText: updateText,
+                        updateText: updateText, // 새로운 할 일 추가
                       ),
                     ),
                   );
@@ -92,22 +117,64 @@ class _MainScreenState extends State<MainScreen> {
       ),
       body: SizedBox(
         child: ListView.builder(
-            itemCount: todoList.length,
-            itemBuilder: (context, index) {
-              return ListTile(
+          itemCount: todoList.length,
+          itemBuilder: (context, index) {
+            return Dismissible(
+              key: UniqueKey(),
+              direction: DismissDirection.startToEnd,
+              background: Container(
+                color: Colors.red,
+                child: const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check),
+                    ],
+                  ),
+                ),
+              ),
+              onDismissed: (direction) {
+                setState(() {
+                  todoList.removeAt(index);
+                  delIndex = index; // 인자로 받은 index로 삭제
+                });
+                prefs.setStringList('data', todoList);
+              },
+              child: ListTile(
                 title: Text(todoList[index].toString()),
                 trailing: IconButton(
                   onPressed: () {
-                    setState(() {
-                      textIndex = index;
-                    });
-                    ShowDialog(textIndex);
-                    // deleteText(index);
+                    ShowDialog(index); // 삭제 다이얼로그 호출 시 index 전달
                   },
                   icon: const Icon(Icons.close),
                 ),
+              ),
+            );
+          },
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.black,
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            builder: (context) {
+              return Padding(
+                padding: MediaQuery.of(context).viewInsets,
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height / 4,
+                  child: AddTask(
+                    updateText: updateText, // 새로운 할 일 추가
+                  ),
+                ),
               );
-            }),
+            },
+          );
+        },
+        child: const Icon(
+          Icons.add,
+          color: Colors.white,
+        ),
       ),
     );
   }
